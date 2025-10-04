@@ -1,0 +1,55 @@
+BATCH_SIZE=${BATCH_SIZE:-10}
+TOTAL=${#WORKSPACES[@]}
+if [ "$TOTAL" -eq 0 ]; then
+  printf "stages: [noop]\nnoop:\n  stage: noop\n  script: [\"echo nothing to do\"]\n" > template-generated.yml
+  exit 0
+fi
+NUM_BATCHES=$(( (TOTAL + BATCH_SIZE - 1) / BATCH_SIZE ))
+
+# Build stage list
+STAGES=""
+for b in $(seq 1 "$NUM_BATCHES"); do
+  STAGES="${STAGES}  - deploy_batch_${b}\n"
+done
+
+# Build job blocks
+JOBS=""
+start=0
+for b in $(seq 1 "$NUM_BATCHES"); do
+  end=$(( start + BATCH_SIZE )); [ "$end" -gt "$TOTAL" ] && end=$TOTAL
+
+  # per-batch matrix
+  MATRIX="  parallel:\n    matrix:\n"
+  i=$start
+  while [ "$i" -lt "$end" ]; do
+    ws="${WORKSPACES[$i]}"; tfp="${TFVARS_PATH[$i]}"
+    MATRIX="${MATRIX}      - TFC_WORKSPACE: \"${ws}\"\n        TFVARS_PATH: \"${tfp}\"\n"
+    i=$(( i + 1 ))
+  done
+
+  MANUAL=""
+  if [ "$b" -gt 1 ]; then
+    MANUAL="  when: manual\n  allow_failure: false\n"
+  fi
+
+  JOBS="${JOBS}deploy_workspaces_batch_${b}:
+  stage: deploy_batch_${b}
+  variables:
+    TFC_ADDR: \"${TFC_ADDR}\"
+    TFC_ORG: \"${TFC_ORG}\"
+    TFC_SSHKEY_NAME: \"${TFC_SSHKEY_NAME}\"
+    ROLE_NAME: \"${ROLE_NAME}\"
+    GITLAB_WEB_IDENTITY_ROLE_ARN: \"arn:aws:iam::${AWS_ACCOUNT_NUMBER}:role/${ROLE_NAME}\"
+${MATRIX}  trigger:
+    include:
+      - .gitlab-common.yml
+    strategy: depend
+${MANUAL}
+"
+  start=$end
+done
+
+# Inject into template
+awk -v S="$STAGES" -v J="$JOBS" \
+  '{gsub(/#__BATCH_STAGES__/, S); gsub(/#__BATCH_JOBS__/, J); print}' \
+  template_script.yml > template-generated.yml
