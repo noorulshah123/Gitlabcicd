@@ -1,0 +1,115 @@
+Universal Package Installation Playbook (Python & R)
+Generated: 2025-10-05 11:02
+
+Overview
+This playbook lists methods for installing Python and R packages on a universal base image:
+- Multi-stage Docker (bake shared deps)
+- Install from S3 wheelhouse (Python) and miniCRAN (R) in entrypoint
+- Curated online sources: AWS CodeArtifact (PyPI), Posit Package Manager (CRAN)
+- GitLab CI/CD: build artifacts to S3
+- On-demand bootstrap (fallback), Conda-pack, caching, and IAM snippets
+
+Method A â Multi-stage Docker (bake shared deps)
+Dockerfile (Python):
+FROM python:3.11-slim AS builder
+RUN pip install --upgrade pip && python -m venv /opt/venv
+ENV PATH=/opt/venv/bin:$PATH
+RUN pip install numpy==2.1.3 pandas==2.2.2
+
+FROM python:3.11-slim
+COPY --from=builder /opt/venv /opt/venv
+ENV PATH=/opt/venv/bin:$PATH
+COPY entrypoint.sh /usr/local/bin/entrypoint.sh
+ENTRYPOINT ["entrypoint.sh"]
+
+Pros: fastest runtime. Cons: rebuild for changes, larger image.
+
+Method B â S3 Wheelhouse / miniCRAN in Entrypoint (recommended)
+Python entrypoint:
+mkdir -p /opt/wheels
+aws s3 sync "${PY_WHEEL_S3}" /opt/wheels
+pip install --no-index --find-links /opt/wheels -r "${APP_DIR}/requirements.lock"
+exec python /app/main.py
+
+R entrypoint:
+mkdir -p /opt/miniCRAN
+aws s3 sync "${R_MINICRAN_S3}" /opt/miniCRAN
+R -q -e 'options(repos=c(CRAN="file:///opt/miniCRAN"));
+         pkgs <- readLines("'"$APP_DIR"'/r-packages.txt");
+         install.packages(pkgs, type="source")'
+exec shiny-server
+
+Pros: reproducible, offline, universal. Cons: small startup install time.
+
+Method C â Curated Online Sources (CodeArtifact & PPM)
+CodeArtifact:
+CA_ENDPOINT=$(aws codeartifact get-repository-endpoint --domain d --domain-owner a --repository r --format pypi --query repositoryEndpoint --output text)
+CA_TOKEN=$(aws codeartifact get-authorization-token --domain d --domain-owner a --query authorizationToken --output text)
+export PIP_INDEX_URL="https://aws:${CA_TOKEN}@${CA_ENDPOINT}simple/"
+pip install -r "${APP_DIR}/requirements.txt"
+
+Posit Package Manager (R):
+options(repos=c(CRAN="https://ppm.your.org/cran/__linux__/jammy/2024-09-01"))
+install.packages(c("dplyr","DT"))
+
+
+Method D â GitLab CI/CD builds to S3
+Python:
+pip-compile python/requirements.in -o python/requirements.lock
+pip wheel -r python/requirements.lock -w dist/
+aws s3 sync dist/ s3://bucket/python/<commit>/
+
+R:
+install.packages("pak")
+dir.create("miniCRAN/src/contrib", recursive=TRUE)
+pkgs <- readLines("r/r-packages.txt")
+pak::pkg_download(pkgs, destdir="miniCRAN/src/contrib")
+tools::write_PACKAGES("miniCRAN/src/contrib", type="source")
+# upload folder to s3://bucket/r/<commit>/
+
+
+Method E â Bootstrap inside app (fallback)
+Python:
+import subprocess, sys
+subprocess.check_call([sys.executable,"-m","pip","install","--no-index","--find-links","/opt/wheels","pandas==2.2.2"])
+import pandas as pd
+
+R:
+options(repos=c(CRAN="file:///opt/miniCRAN"))
+install.packages("dplyr", type="source"); library(dplyr)
+
+
+Method F â Conda-pack (optional)
+CI:
+conda-lock -f environment.yml -p linux-64 -o conda-lock.yml
+conda create -p /opt/conda/env -y
+conda install -p /opt/conda/env --file conda-lock.yml -y
+conda-pack -p /opt/conda/env -o env.tar.gz
+aws s3 cp env.tar.gz s3://bucket/conda/envs/<build-id>.tar.gz
+
+Runtime:
+aws s3 cp s3://bucket/conda/envs/<build-id>.tar.gz /opt/env.tar.gz
+mkdir -p /opt/env && tar -xzf /opt/env.tar.gz -C /opt/env
+/opt/env/bin/python /app/main.py
+
+
+IAM snippets
+S3 read:
+{ "Version":"2012-10-17", "Statement":[
+  {"Effect":"Allow","Action":["s3:GetObject","s3:ListBucket"],
+   "Resource":["arn:aws:s3:::approved-artifacts-bucket",
+               "arn:aws:s3:::approved-artifacts-bucket/python/*",
+               "arn:aws:s3:::approved-artifacts-bucket/r/*"]} ]}
+
+CodeArtifact add:
+- codeartifact:GetAuthorizationToken
+- codeartifact:GetRepositoryEndpoint
+- sts:GetServiceBearerToken
+
+ShinyProxy example (container-env)
+specs:
+  - id: py-app
+    container-image: <ECR>/universal-py:latest
+    container-env:
+      APP_TYPE: PyShiny
+      PY_WHEEL_S3: s3://approved-artifacts-buck
