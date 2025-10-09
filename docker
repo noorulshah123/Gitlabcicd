@@ -1,0 +1,59 @@
+# ====================== Stage 1: build the conda env ======================
+FROM continuumio/miniconda3:24.7.1 AS builder
+SHELL ["/bin/bash","-o","pipefail","-c"]
+
+# Copy your conda spec
+COPY app-runtime-python/environment.yml /tmp/environment.yml
+
+# Build the env (name: py-runtime). Do NOT include awscli here.
+RUN set -eux; \
+    conda config --set channel_priority strict; \
+    conda env create -n py-runtime -f /tmp/environment.yml; \
+    conda clean -afy
+
+# ====================== Stage 2: final runtime ============================
+# Final base as requested: Python slim
+FROM python:3.12-slim-bookworm
+SHELL ["/bin/bash","-o","pipefail","-c"]
+
+# OS deps + AWS CLI v2 (bundled binary)
+RUN set -eux; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends ca-certificates curl unzip; \
+    update-ca-certificates; \
+    curl -fsSL https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip -o /tmp/awscliv2.zip; \
+    unzip -q /tmp/awscliv2.zip -d /tmp; \
+    /tmp/aws/install --bin-dir /usr/local/bin --install-dir /usr/local/aws-cli; \
+    rm -rf /var/lib/apt/lists/* /tmp/aws*
+
+# Bring in the conda env (self-contained, includes its own Python)
+COPY --from=builder /opt/conda/envs/py-runtime /opt/conda/envs/py-runtime
+
+# Prefer the conda env's Python, and make sure v2 aws wins
+ENV PATH="/opt/conda/envs/py-runtime/bin:/usr/local/bin:${PATH}" \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    REQUESTS_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt \
+    SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt \
+    CURL_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt \
+    AWS_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt \
+    BOTO_DISABLE_PYOPENSSL=1 \
+    AWS_EC2_METADATA_DISABLED=true
+
+# Belt & suspenders: remove any aws shim that might exist in the env
+RUN rm -f /opt/conda/envs/py-runtime/bin/aws* || true
+
+# Non-root user & workdir
+RUN useradd -m -s /bin/bash shinyuser
+WORKDIR /home/shinyuser
+ENV APP_DIR=/home/shinyuser PORT=8080
+
+# (Optional) bring your entrypoint that does `aws s3 sync ...`
+# Adjust the source path if yours differs.
+COPY --chown=shinyuser:shinyuser app-runtime-python/entrypoint.sh /usr/local/bin/entrypoint.sh
+RUN chmod +x /usr/local/bin/entrypoint.sh
+
+EXPOSE 8080 3838 8000 7860 8501
+USER shinyuser
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
