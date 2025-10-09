@@ -1,0 +1,178 @@
+Prod rollout from pilot: Moved from last month’s single app test to production deployments of data apps on the standardized ECS/ShinyProxy path → faster time-to-value for teams.
+
+Operationalized the new base image: Took the Ubuntu 24 + s6 refactor from design to practice with GitLab CI/CD pipelines that build, scan and promote images to Prod → repeatable, auditable releases with reduced manual effort.
+
+Pre-init UX protected, costs trimmed: Extended last month’s pre-initialization by updating the ECS cleanup Lambda to stop only on-demand tasks (>48h) while preserving pre-warmed seats → keeps near-instant opens and avoids idle spend.
+
+Observability standardization: Turned logging research into action with CloudWatch group/stream prefixes (/ecs/{team}/{env}/{cluster} / {app}) and drafted SSO read-only policies → self-serve troubleshooting and cleaner separation by team/app.
+
+Secrets & AAD integration matured: Advanced last month’s secrets handling by releasing internal package v2.1.18 with MSAL and validated domain-secret fetch in an R/Shiny NPE deploy → consistent, secure auth/secret patterns across apps.
+
+
+
+Cross-team delivery: Coordinated with platform/security/app owners to unblock deploys, logging access and secrets usage → fewer handoffs, quicker issue resolution.
+
+
+
+
+
+
+
+---
+
+In-progress / next
+
+Roll out SSO-based, team-scoped CloudWatch access; set log retention defaults per env.
+
+Decide on Fluent Bit adoption for multiline app logs and per-team partitions.
+
+Add simple success metrics to dashboards (cold-start time, failed starts, stopped idle tasks, monthly cost avoided).
+
+Extend CI/CD to cover promotion gates and image provenance (SBOM/attestation) where needed.
+
+
+
+---
+
+Optional one-liner bullets (for a slide)
+
+Prod apps live; infra path standardized.
+
+GitLab → ECR/ECS Prod deploys; fewer manual steps.
+
+CloudWatch logs grouped by /ecs/{team}/{env}/{cluster}; SSO access planned.
+
+Secrets SDK v2.1.18 with MSAL; validated with R/Shiny in NPE.
+
+Lambda stops only on-demand tasks >48h; pre-warmed seats preserved.
+
+
+Want this formatted as a Word/PDF with your logo and a cover “Customer Value” slide? I can generate it exactly in that layout.
+
+Here’s a crisp, customer-facing month-end update you can paste into mail/Jira. I’ve framed each item in Outcome → Customer benefit language and kept it tight.
+
+Executive summary
+
+Data apps in Prod with a hardened, reproducible infra path.
+
+Build & deploy automation via GitLab CI/CD to Prod accounts.
+
+Observability: standardized CloudWatch log naming + access plan.
+
+Secure secrets SDK: new version with AAD (MSAL) support, validated with R/Shiny.
+
+Cost control: ECS cleanup Lambda targets only on-demand tasks; leaves pre-warmed seats intact.
+
+
+
+---
+
+Detailed achievements & customer benefits
+
+1. Data apps deployment to Production (infra + apps)
+
+
+
+What I delivered: Provisioned ECS/ShinyProxy-aligned infra and shipped multiple data-science apps to Prod.
+
+Customer benefit: Teams can launch apps reliably without waiting on infra; consistent runtime (Redis/session, Secrets Manager, app templates) reduces break/fix and onboarding time.
+
+
+2. GitLab CI/CD for Docker image build & Prod deployment
+
+
+
+What I delivered: Pipelines to build, scan, and push images to ECR and deploy to target Prod accounts.
+
+Customer benefit: Fewer manual touches, faster and safer promotions; repeatable builds improve auditability and rollback.
+
+
+3. CloudWatch log group/stream standardization (+ access model)
+
+
+
+What I delivered: Introduced ShinyProxy ECS log naming:
+
+proxy:
+  ecs:
+    cloud-watch-group-prefix: /ecs/${TEAM_NAME}/${ENV}/${CLUSTER_NAME}/
+    cloud-watch-stream-prefix: ${APP_NAME}
+
+Drafted SSO role policies for team-scoped, read-only log access (staged; not yet rolled out). Researched Fluent Bit for multiline app logs and standardized grouping.
+
+Customer benefit: Self-serve troubleshooting per team; cleaner separation of logs by team/app; faster MTTR. (Next: finalize IAM rollout + optional Fluent Bit for richer app logs.)
+
+
+4. Custom SageMaker package – secrets module update & MSAL
+
+
+
+What I delivered: Released v2.1.18 of our internal sagemaker package: hardened secrets helper + MSAL dependency for Azure AD flows. Validated by fetching domain secrets during an R/Shiny deployment in NPE.
+
+Customer benefit: Consistent, secure secret retrieval across apps; fewer one-off scripts; readiness for AAD-backed auth patterns.
+
+
+5. ECS task shutdown Lambda – cost optimization without hurting UX
+
+
+
+What I delivered: Updated the cleanup Lambda to stop only on-demand app tasks older than 48h; excludes pre-initialized (warmed-seat) tasks by checking Docker/ECS labels set from app specs.
+
+Customer benefit: Controls idle-resource cost while preserving near-instant first-open experience for users.
+
+
+6. Cross-team coordination
+
+
+
+What I delivered: Partnered with platform/security/app teams to unblock deployments, secrets integration, and logging questions.
+
+Customer benefit: Reduced handoffs, quicker decisions, and smoother app releases.
+
+
+
+---
+
+Impact summary (why this matters)
+
+Faster time-to-value: Pre-warmed seats + CI/CD reduce “first open” wait and release cycles.
+
+Reliability & supportability: Standardized logs + secrets patterns shorten triage and lower incident risk.
+
+Security & compliance: MSAL/AAD integration and scoped log access align with enterprise controls.
+
+Cost efficiency: Intelligent task cleanup trims spend without degrading user experience.
+
+
+
+---
+
+In-progress / next
+
+Roll out SSO-based, team-scoped CloudWatch access; set log retention defaults per env.
+
+Decide on Fluent Bit adoption for multiline app logs and per-team partitions.
+
+Add simple success metrics to dashboards (cold-start time, failed starts, stopped idle tasks, monthly cost avoided).
+
+Extend CI/CD to cover promotion gates and image provenance (SBOM/attestation) where needed.
+
+
+
+---
+
+Optional one-liner bullets (for a slide)
+
+Prod apps live; infra path standardized.
+
+GitLab → ECR/ECS Prod deploys; fewer manual steps.
+
+CloudWatch logs grouped by /ecs/{team}/{env}/{cluster}; SSO access planned.
+
+Secrets SDK v2.1.18 with MSAL; validated with R/Shiny in NPE.
+
+Lambda stops only on-demand tasks >48h; pre-warmed seats preserved.
+
+
+Want this formatted as a Word/PDF with your logo and a cover “Customer Value” slide? I can generate it exactly in that layout.
+
