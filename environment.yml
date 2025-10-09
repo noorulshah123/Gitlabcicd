@@ -1,0 +1,31 @@
+name: py-runtime
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.10
+  - pip
+  - boto3>=1.28
+  - botocore>=1.31
+  - requests
+  - numpy
+  - pandas
+  - matplotlib
+  - cryptography
+  - uvicorn
+  - gunicorn
+  - fastapi
+  - watchdog
+  - python-dotenv
+  - conda-pack
+  # keep R bits out if this is the Python-only runtime
+  # - r-base
+  # - r-shiny
+  - pip:
+      - streamlit>=1.24,<2.0
+      - gradio
+      - PyJWT
+      - python-multipart>=0.0.6,<0.1.0
+      - msal
+      - langchain>=0.0.300,<0.1.0
+      - llama-index>=0.8.0,<0.9.0
