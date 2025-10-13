@@ -1,0 +1,229 @@
+Terraform is an Infrastructure as Code (IaC) tool that lets you define, provision, and manage infrastructure using declarative configuration files.
+
+Uses HCL (HashiCorp Configuration Language)
+
+Supports multi-cloud environments
+
+Ensures consistent and repeatable deployments
+
+🧩 Terraform Key Concepts
+Concept	Description
+Providers	Plugins that allow Terraform to manage specific platforms (AWS, Azure, Snowflake, etc.)
+Resources	Actual infrastructure objects (S3 bucket, IAM role, Snowflake stage, etc.)
+Variables	Input parameters for configurations
+State (tfstate)	A JSON file tracking current infrastructure
+Modules	Reusable sets of Terraform configurations
+Backend	Where Terraform stores its state (local file, Terraform Cloud, S3, etc.)
+🗂 Terraform File Structure Example
+enterprise_buckets/
+│
+├── main.tf                 # Providers, resources, and KMS key
+├── variables.tf            # Variable definitions
+├── workspaces/
+│   ├── dev.tf              # Dev workspace (Terraform Cloud backend)
+│   ├── uat.tf              # UAT workspace
+│   └── prod.tf             # Prod workspace
+├── bma_config.tf           # Example Snowflake–S3 module configuration
+└── workspace_load.sh       # Script to load environment workspace
+
+⚙️ Terraform Configuration Example
+terraform {
+  required_providers {
+    aws = {
+      source  = "hashicorp/aws"
+      version = "~> 3.27"
+    }
+    snowflake = {
+      source  = "chanzuckerberg/snowflake"
+      version = "0.25.36"
+    }
+  }
+
+  cloud {
+    organization = "bhp-dev"
+    workspaces {
+      name = "a_aws_enterprise_buckets_dev"
+    }
+  }
+}
+
+provider "aws" {
+  region = "ap-southeast-2"
+}
+
+provider "snowflake" {
+  account          = "BHP-SYDNEY.privateLink"
+  role             = "STORAGE_ADMIN"
+  private_key_path = var.private_key_path
+  username         = "STORAGE_ADMIN"
+}
+
+
+✅ This links the configuration to the Terraform Cloud workspace for state management.
+
+🧠 Terraform Workflow Overview
+┌──────────────┐
+│ Write Code   │  → Define resources (S3, Snowflake, etc.)
+└──────┬───────┘
+       │
+┌──────▼───────┐
+│ terraform init │  → Initialize backend, providers, modules
+└──────┬───────┘
+       │
+┌──────▼───────┐
+│ terraform plan │  → Preview changes to be made
+└──────┬───────┘
+       │
+┌──────▼───────┐
+│ terraform apply │  → Execute changes (create/update/destroy)
+└──────┬───────┘
+       │
+┌──────▼───────┐
+│ terraform destroy │ → Tear down infrastructure (optional)
+└──────────────┘
+
+🧰 Common Terraform Commands
+Command	Description	Example
+terraform init	Initializes Terraform in the working directory — downloads providers, sets up backend	terraform init
+terraform plan	Shows what changes Terraform will make	terraform plan -var=env=dev
+terraform apply	Applies the changes to create/update resources	terraform apply -auto-approve
+terraform destroy	Destroys all managed infrastructure	terraform destroy -auto-approve
+terraform validate	Validates configuration syntax	terraform validate
+terraform fmt	Formats configuration files to standard HCL style	terraform fmt
+terraform output	Displays output values	terraform output
+☁️ Terraform Cloud Backend (in your setup)
+
+Terraform Cloud acts as:
+
+The remote backend (stores tfstate)
+
+A state locker and version manager
+
+A workspace manager (Dev / UAT / Prod)
+
+Example backend definition:
+
+terraform {
+  cloud {
+    organization = "bhp-dev"
+    workspaces {
+      name = "a_aws_enterprise_buckets_dev"
+    }
+  }
+}
+
+🗃 How tfstate Works Here
+Step	Action
+1️⃣	terraform init connects to Terraform Cloud workspace
+2️⃣	CLI downloads latest remote state
+3️⃣	terraform apply runs locally in the GitLab runner
+4️⃣	After successful apply, CLI pushes new state to Terraform Cloud
+5️⃣	Terraform Cloud versions and stores the state file securely
+6️⃣	Future runs re-use that remote state automatically
+
+✅ No local terraform.tfstate file exists — the state lives entirely in Terraform Cloud.
+
+🧩 Environment Targeting via Workspaces
+
+Each environment (Dev, UAT, Prod) uses a different Terraform Cloud workspace, managed dynamically:
+
+./workspace_load.sh dev
+# Copies workspaces/dev.tf → terraform_cloud.tf
+
+
+This ensures:
+
+Each environment has isolated state
+
+Independent apply/destroy operations
+
+Clear separation of credentials and variables
+
+🧱 Terraform in GitLab CI/CD
+
+Simplified pipeline sequence:
+
+stages:
+  - deploy_dev
+  - deploy_uat
+  - deploy_prod
+
+deploy_dev:
+  stage: deploy_dev
+  script:
+    - ./configure_terraform_cli.sh
+    - cd enterprise_buckets
+    - ./workspace_load.sh dev
+    - terraform init
+    - terraform apply -auto-approve
+
+🔹 What Happens Here:
+
+CI job runs inside Docker with Terraform installed.
+
+Authenticates to Terraform Cloud via token.
+
+Loads correct workspace (Dev/UAT/Prod).
+
+Runs terraform init + terraform apply.
+
+Terraform pushes tfstate automatically to remote workspace.
+
+🔒 Terraform Cloud State Locking
+
+Terraform Cloud locks the workspace during apply
+→ prevents concurrent changes.
+
+Unlocks automatically after completion.
+
+All state changes are versioned and audited.
+
+🧩 Example Real Command Flow in Runner
+# Authenticate Terraform CLI
+$ ./configure_terraform_cli.sh
+
+# Load the environment
+$ ./workspace_load.sh dev
+
+# Initialize providers and backend
+$ terraform init
+
+# See what will change
+$ terraform plan -var=env=dev
+
+# Apply configuration
+$ terraform apply -auto-approve
+
+# Output results
+$ terraform output
+
+🧭 Example: Terraform Cloud Workspace View
+
+Each environment workspace in Terraform Cloud shows:
+
+Workspace	Purpose	State Version	Last Run
+a_aws_enterprise_buckets_dev	Dev Infrastructure	#23	Oct 12, 2025
+a_aws_enterprise_buckets_uat	UAT Infrastructure	#18	Oct 11, 2025
+a_aws_enterprise_buckets_prod	Production Infra	#40	Oct 12, 2025
+
+You can inspect, download, or roll back the state from the Terraform Cloud UI.
+
+🚀 Terraform Command Summary (Quick Sheet)
+Command	Purpose
+terraform init	Initialize backend and modules
+terraform fmt	Format code
+terraform validate	Check syntax
+terraform plan	Preview infra changes
+terraform apply	Apply infra
+terraform destroy	Destroy infra
+terraform state list	Show tracked resources
+terraform output	Display outputs
+terraform workspace show	Show active workspace
+🔍 Terraform Cloud Backend vs Local Backend
+Feature	Local Backend	Terraform Cloud Backend
+State Location	terraform.tfstate on disk	Remote in Terraform Cloud
+Locking	Local file lock	Managed via API
+Versioning	Manual	Automatic
+Collaboration	Not safe	Safe for teams
+Recovery	Manual backup	Version rollback
+Security	File permissions	Role-based access control
