@@ -1,0 +1,285 @@
+**Terraform Configuration and Command Workflow (with GitLab CI/CD + Terraform Cloud Integration)**
+
+---
+
+### 1. Terraform Fundamentals
+
+Terraform is an **Infrastructure as Code (IaC)** tool that allows defining, provisioning, and managing infrastructure using declarative HCL syntax.
+
+#### Key Concepts
+
+| Concept       | Description                                                                        |
+| ------------- | ---------------------------------------------------------------------------------- |
+| **Providers** | Plugins for managing platforms like AWS, Snowflake, Azure, etc.                    |
+| **Resources** | The actual infrastructure components (e.g., S3 bucket, IAM role, Snowflake stage). |
+| **Variables** | Input parameters that make configurations reusable.                                |
+| **State**     | Tracks the real-world infrastructure (stored in Terraform Cloud here).             |
+| **Modules**   | Group reusable configurations for specific components.                             |
+| **Backend**   | Defines where Terraform stores state (Terraform Cloud in this case).               |
+
+---
+
+### 2. File Structure Overview
+
+```
+enterprise_buckets/
+│
+├── main.tf                  # Providers, KMS, and backend setup
+├── variables.tf             # Variable definitions
+├── workspaces/
+│   ├── dev.tf               # Terraform Cloud workspace for Dev
+│   ├── uat.tf               # Terraform Cloud workspace for UAT
+│   └── prod.tf              # Terraform Cloud workspace for Prod
+├── abc_config.tf            # Module for Snowflake-S3 integration
+├── workspace_load.sh        # Script for workspace switching
+├── configure_terraform_cli.sh # Authenticates Terraform CLI with Cloud
+└── modification_check.sh    # Ensures safe code modifications
+```
+
+---
+
+### 3. Terraform Syntax & Structure
+
+#### a. Basic Blocks
+
+```
+terraform {
+  required_providers {
+    aws = {
+      source  = "hashicorp/aws"
+      version = "~> 3.27"
+    }
+  }
+  cloud {
+    organization = "company-dev"
+    workspaces {
+      name = "a_aws_enterprise_buckets_dev"
+    }
+  }
+}
+
+provider "aws" {
+  region = var.region
+}
+```
+
+#### b. Variable Declaration and Types
+
+```
+variable "region" {
+  description = "AWS region for deployment"
+  type        = string
+  default     = "ap-southeast-2"
+}
+
+variable "tags" {
+  description = "Common resource tags"
+  type        = map(string)
+  default = {
+    project = "snowflake-integration"
+    owner   = "data-platform"
+  }
+}
+```
+
+#### c. Lookup, Count, Conditional & Loop Examples
+
+```
+# lookup example
+locals {
+  env_vars = {
+    dev  = "development"
+    uat  = "staging"
+    prod = "production"
+  }
+}
+
+output "current_env" {
+  value = lookup(local.env_vars, var.env, "unknown")
+}
+
+# count example
+resource "aws_s3_bucket" "team_buckets" {
+  count = length(var.team_names)
+  bucket = "${var.project}-${element(var.team_names, count.index)}"
+  acl    = "private"
+}
+
+# conditional example
+resource "aws_s3_bucket_versioning" "example" {
+  bucket = aws_s3_bucket.team_buckets[0].id
+  versioning_configuration {
+    status = var.enable_versioning ? "Enabled" : "Suspended"
+  }
+}
+
+# for_each example
+resource "aws_iam_user" "users" {
+  for_each = toset(var.usernames)
+  name     = each.value
+}
+```
+
+---
+
+### 4. CI/CD Integration (GitLab + Terraform Cloud)
+
+#### `.gitlab-ci.yml` Example
+
+```
+default:
+  tags:
+    - runner-company-cloud-aws-apse2-prd-premium
+  image:
+    name: $CI_REGISTRY/company-cloudfactory/aws-apps/snowflake/snowflake-administration-docker:latest
+    entrypoint: [""]
+
+variables:
+  AWS_REGION: ap-southeast-2
+  KUBERNETES_CPU_LIMIT: 8000m
+  KUBERNETES_MEMORY_LIMIT: 8Gi
+
+stages:
+  - deploy_dev
+  - deploy_uat
+  - deploy_prod
+
+ci_dev:
+  stage: deploy_dev
+  variables:
+    AWS_ACCESS_KEY_ID: $DEV_AWS_ACCESS_KEY_ID
+    AWS_SECRET_ACCESS_KEY: $DEV_AWS_SECRET_ACCESS_KEY
+    TERRAFORM_CLI_TOKEN: $DEV_TERRAFORM_CLI_TOKEN
+    ENVIRONMENT: dev
+  script:
+    - ./configure_terraform_cli.sh
+    - cd enterprise_buckets
+    - ./workspace_load.sh ${ENVIRONMENT}
+    - terraform init
+    - terraform plan -var=env=${ENVIRONMENT}
+  only:
+    - merge_requests
+
+deploy_dev:
+  stage: deploy_dev
+  script:
+    - ./configure_terraform_cli.sh
+    - cd enterprise_buckets
+    - ./workspace_load.sh dev
+    - terraform init
+    - terraform apply -var=env=dev -auto-approve
+  only:
+    - main
+
+# Similar jobs for deploy_uat and deploy_prod with environment variables changed
+```
+
+---
+
+### 5. Terraform Command Workflow
+
+| Command              | Description                                 | Example                         |
+| -------------------- | ------------------------------------------- | ------------------------------- |
+| `terraform init`     | Initializes providers, backend, and modules | terraform init                  |
+| `terraform plan`     | Shows proposed infrastructure changes       | terraform plan -var=env=dev     |
+| `terraform apply`    | Applies changes to create/update resources  | terraform apply -auto-approve   |
+| `terraform destroy`  | Destroys all managed resources              | terraform destroy -auto-approve |
+| `terraform fmt`      | Formats Terraform files                     | terraform fmt                   |
+| `terraform validate` | Validates syntax correctness                | terraform validate              |
+
+---
+
+### 6. GitLab Helper Scripts
+
+#### `configure_terraform_cli.sh`
+
+```
+#!/bin/bash
+[[ "$TERRAFORM_CLI_TOKEN" ]] || { echo "TERRAFORM_CLI_TOKEN must be set"; exit 1; }
+cat << EOF > .terraformrc
+credentials "app.terraform.io" {
+  token = "$TERRAFORM_CLI_TOKEN"
+}
+EOF
+export TF_CLI_CONFIG_FILE=../.terraformrc
+```
+
+#### `workspace_load.sh`
+
+```
+#!/bin/bash
+cp workspaces/$1.tf terraform_cloud.tf
+```
+
+#### `modification_check.sh`
+
+```
+#!/bin/bash
+function modification {
+  git diff HEAD..origin/main --word-diff --ignore-all-space -- '*.tf' | grep ^+
+  return $?
+}
+
+if modification; then
+  echo "Terraform files were modified. Manual approval required."
+  exit 1
+else
+  echo "Only new files created. Safe to continue."
+fi
+```
+
+---
+
+### 7. Terraform Cloud Backend Behavior
+
+1. Terraform authenticates with Terraform Cloud using CLI token.
+2. Each environment workspace stores its own **remote state**.
+3. The backend locks state during apply to prevent conflicts.
+4. Upon success, Terraform Cloud versions the state and logs all runs.
+
+---
+
+### 8. S3–Snowflake Integration Workflow
+
+1. Terraform creates AWS S3 buckets and assigns KMS encryption.
+2. Snowflake configuration references the S3 bucket ARN and external ID.
+3. IAM trust policies enable Snowflake to access the S3 bucket securely.
+4. The private key and KMS key are retrieved via Terraform variables.
+
+**Example Snippet:**
+
+```
+module "abc_all_xyz" {
+  asset  = "abc"
+  site   = "all"
+  datasource = "xyz"
+  env = local.env
+  source = "git::https://gitlab.com/path"
+  private_key_path = local.private_key_path
+  kms_key_arn = local.kms_key_arn
+}
+```
+
+---
+
+### 9. Best Practices
+
+* Use `locals` for constants and environment mappings.
+* Keep Terraform Cloud state remote for collaboration.
+* Use `modification_check.sh` to prevent accidental state drift.
+* Apply consistent variable naming conventions.
+* Run `terraform fmt` and `terraform validate` in every pipeline.
+
+---
+
+### 10. Key Takeaways
+
+✅ Terraform is declarative and environment-driven.
+✅ Terraform Cloud manages state and provides locking.
+✅ GitLab CI automates init → plan → apply sequence.
+✅ Scripts ensure authentication and prevent unsafe changes.
+✅ S3–Snowflake integration relies on secure IAM and key management.
+
+---
+
+**End of Document — Terraform Configuration & Command Workflow**
