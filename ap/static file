@@ -1,0 +1,1 @@
+ENV SPRING_WEB_RESOURCES_STATIC-LOCATIONS="file:/opt/shinyproxy/static/"
