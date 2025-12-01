@@ -1,0 +1,15 @@
+1. CVAT deployment – PoC and feasible approach evaluation
+
+Task summary
+Initiated a proof-of-concept deployment of CVAT on AWS ECS using RDS, Redis and serverless components, to evaluate feasible deployment patterns that fit our private VPC, security and platform constraints. The work is currently ~50% complete and under active testing.
+
+Benefit / Client impact
+This PoC helps us identify a secure, scalable and cost-effective way to host an in-house annotation platform in the future. Once finalized, it will enable faster, controlled creation of labeled datasets for computer vision use cases, reducing dependency on external tools and improving turnaround time and quality for client AI/ML projects.
+
+2. Image patching for ShinyProxy & app-runtime (AWS CLI v2 + dependency proxy)
+
+Task summary
+Patched ShinyProxy and app-runtime container images, including upgrading AWS CLI to v2 to resolve S3 sync issues, and configured the GitLab dependency proxy for Docker image caching.
+
+Benefit / Client impact
+These changes improve the stability and security of our analytics platform—reducing deployment failures related to S3 sync, speeding up image pulls during releases, and lowering external registry dependencies. End users and clients benefit from more reliable access to applications and smoother, faster deployments with fewer interruptions.
