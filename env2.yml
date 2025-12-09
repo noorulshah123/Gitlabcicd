@@ -1,0 +1,93 @@
+name: py-runtime
+channels:
+  - conda-forge
+  - defaults
+  - https://repo.anaconda.com/pkgs/snowflake/
+dependencies:
+  - python=3.12
+  - pip
+  # ...your existing conda deps...
+  - snowflake-ml-python==1.*   # pin to a safe major/minor band
+
+
+# TruLens core + OTel semantic conventions
+trulens-core==2.5.* 
+trulens-otel-semconv==2.4.* 
+trulens-connectors-snowflake==2.5.* 
+
+# Snowflake connectivity (recommended practical additions)
+snowflake-connector-python==3.* 
+snowflake-snowpark-python==1.* 
+
+
+# syntax=docker/dockerfile:1.7
+ARG MINICONDA_BASE=continuumio/miniconda3:25.3.1-1
+ARG PY_BASE=python:3.12-slim-bookworm
+
+# -------------------------
+# 1) Base builder (YOUR existing env)
+# -------------------------
+FROM ${MINICONDA_BASE} AS base_builder
+SHELL ["/bin/bash","-o","pipefail","-c"]
+WORKDIR /app
+USER root
+
+COPY app-runtime-python/environment.yml /tmp/environment.yml
+COPY app-runtime-python/requirements-base.txt /tmp/requirements-base.txt
+COPY app-runtime-python/pip.conf /etc/pip.conf
+
+RUN chmod 644 /etc/pip.conf && \
+    conda config --set channel_priority strict && \
+    conda env create -f /tmp/environment.yml -n py-runtime && \
+    conda run -n py-runtime pip install --no-cache-dir -r /tmp/requirements-base.txt && \
+    conda clean -afy
+
+# -------------------------
+# 2) TruLens extension builder
+# -------------------------
+FROM base_builder AS trulens_builder
+COPY app-runtime-python/requirements-trulens.txt /tmp/requirements-trulens.txt
+
+RUN conda run -n py-runtime pip install --no-cache-dir -r /tmp/requirements-trulens.txt && \
+    conda clean -afy
+
+# -------------------------
+# 3) Final base runtime (without TruLens)
+# -------------------------
+FROM ${PY_BASE} AS runtime-base
+SHELL ["/bin/bash","-o","pipefail","-c"]
+
+RUN set -eux; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends ca-certificates curl unzip; \
+    rm -rf /var/lib/apt/lists/*
+
+COPY --from=base_builder /opt/conda/envs/py-runtime /opt/conda/envs/py-runtime
+
+ENV PATH="/opt/conda/envs/py-runtime/bin:/usr/local/bin:${PATH}" \
+    PYTHONUNBUFFERED=1
+
+# your existing user/entrypoint steps
+# COPY --chown=shinyuser:shinyuser app-runtime-python/entrypoint.sh /usr/local/bin/entrypoint.sh
+# RUN chmod +x /usr/local/bin/entrypoint.sh
+# USER shinyuser
+# WORKDIR /home/shinyuser
+# ENTRYPOINT ["entrypoint.sh"]
+
+# -------------------------
+# 4) Final TruLens runtime
+# -------------------------
+FROM ${PY_BASE} AS runtime-trulens
+SHELL ["/bin/bash","-o","pipefail","-c"]
+
+RUN set -eux; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends ca-certificates curl unzip; \
+    rm -rf /var/lib/apt/lists/*
+
+COPY --from=trulens_builder /opt/conda/envs/py-runtime /opt/conda/envs/py-runtime
+
+ENV PATH="/opt/conda/envs/py-runtime/bin:/usr/local/bin:${PATH}" \
+    PYTHONUNBUFFERED=1
+
+# repeat your existing user/entrypoint steps here too
