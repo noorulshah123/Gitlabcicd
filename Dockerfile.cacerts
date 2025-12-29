@@ -1,0 +1,100 @@
+FROM node:lts-alpine AS cvat-ui
+
+ARG CORP_CA_PEM
+
+# Alpine-style CA install
+RUN apk add --no-cache ca-certificates
+RUN mkdir -p /usr/local/share/ca-certificates \
+ && echo "$CORP_CA_PEM" > /usr/local/share/ca-certificates/corporate-root.crt \
+ && update-ca-certificates
+
+ENV NODE_EXTRA_CA_CERTS=/etc/ssl/certs/ca-certificates.crt
+# (http_proxy/https_proxy envs already exist in their Dockerfile)
+
+# now npm install, etc.
+COPY cvat-core/package*.json /tmp/cvat-core/
+COPY cvat-canvas/package*.json /tmp/cvat-canvas/
+COPY cvat-ui/package*.json /tmp/cvat-ui/
+RUN npm install ...  # as in original file
+...
+
+
+FROM nginx:1.29.2-alpine3.22-slim  # or whatever they use now
+
+ARG CORP_CA_PEM
+RUN apk add --no-cache ca-certificates \
+ && mkdir -p /usr/local/share/ca-certificates \
+ && echo "$CORP_CA_PEM" > /usr/local/share/ca-certificates/corporate-root.crt \
+ && update-ca-certificates
+
+# Rest of original:
+# RUN sed -i "s/}/application\/wasm wasm;\n}/g" /etc/nginx/mime.types
+# COPY cvat-ui/react_nginx.conf /etc/nginx/conf.d/default.conf
+# COPY --from=cvat-ui /tmp/cvat-ui/dist /usr/share/nginx/html/
+
+
+
+----------------------
+
+FROM nginxinc/nginx-unprivileged:1.29.2-alpine3.22-slim
+
+# --- Corporate CA (Alpine) ---
+COPY cvat-ui/corporate-root-ca.crt /usr/local/share/ca-certificates/corporate-root-ca.crt
+RUN apk add --no-cache ca-certificates \
+ && update-ca-certificates
+
+# Replace default.conf configuration to remove unnecessary rules
+COPY cvat-ui/react_nginx.conf /etc/nginx/conf.d/default.conf
+COPY cvat-ui/robots.txt /usr/share/nginx/html/
+COPY --from=cvat-ui /tmp/cvat-ui/dist /usr/share/nginx/html/
+
+
+---------------------------
+FROM node:20-slim AS cvat-ui
+
+ENV TERM=xterm \
+    LANG='C.UTF-8' \
+    LC_ALL='C.UTF-8'
+
+# --- Corporate CA (Debian) ---
+COPY cvat-ui/corporate-root-ca.crt /usr/local/share/ca-certificates/corporate-root-ca.crt
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends ca-certificates \
+ && update-ca-certificates \
+ && rm -rf /var/lib/apt/lists/*
+
+# Node can be told explicitly to trust this bundle
+ENV NODE_EXTRA_CA_CERTS=/etc/ssl/certs/ca-certificates.crt
+
+# Install dependencies
+RUN npm install -g corepack
+
+COPY .yarnrc.yml /tmp/
+COPY package.json /tmp/
+COPY yarn.lock /tmp/
+COPY cvat-core/package.json /tmp/cvat-core/
+COPY cvat-canvas/package.json /tmp/cvat-canvas/
+COPY cvat-canvas3d/package.json /tmp/cvat-canvas3d/
+COPY cvat-ui/package.json /tmp/cvat-ui/
+COPY cvat-data/package.json /tmp/cvat-data/
+
+WORKDIR /tmp/
+RUN DISABLE_HUSKY=1 yarn install --immutable
+
+# Build source code
+COPY cvat-data/ /tmp/cvat-data/
+COPY cvat-core/ /tmp/cvat-core/
+COPY cvat-canvas3d/ /tmp/cvat-canvas3d/
+COPY cvat-canvas/ /tmp/cvat-canvas/
+COPY cvat-ui/ /tmp/cvat-ui/
+
+ARG UI_APP_CONFIG
+ARG CLIENT_PLUGINS
+ARG DISABLE_SOURCE_MAPS
+ARG SOURCE_MAPS_TOKEN
+
+RUN CLIENT_PLUGINS="${CLIENT_PLUGINS}" \
+    DISABLE_SOURCE_MAPS="${DISABLE_SOURCE_MAPS}" \
+    UI_APP_CONFIG="${UI_APP_CONFIG}" \
+    SOURCE_MAPS_TOKEN="${SOURCE_MAPS_TOKEN}" \
+    yarn run build:cvat-ui
