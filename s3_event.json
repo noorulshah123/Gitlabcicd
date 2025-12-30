@@ -1,0 +1,84 @@
+### lambda account:
+
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "AllowInvokeFromS3Bucket",
+      "Effect": "Allow",
+      "Principal": { "Service": "s3.amazonaws.com" },
+      "Action": "lambda:InvokeFunction",
+      "Resource": "<LAMBDA_FUNCTION_ARN>",
+      "Condition": {
+        "StringEquals": {
+          "AWS:SourceAccount": "<PRODUCER_ACCOUNT_ID>"
+        },
+        "ArnLike": {
+          "AWS:SourceArn": "arn:aws:s3:::<BUCKET_NAME>"
+        }
+      }
+    }
+  ]
+}
+
+
+### 
+S3 bucket policy:
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "AllowxyzLambdaListOnlyErrorPrefix",
+      "Effect": "Allow",
+      "Principal": { "AWS": "<LAMBDA_ROLE_ARN>" },
+      "Action": "s3:ListBucket",
+      "Resource": "arn:aws:s3:::<BUCKET_NAME>",
+      "Condition": {
+        "StringLike": {
+          "s3:prefix": [
+            "<ERROR_PREFIX>*"
+          ]
+        }
+      }
+    },
+    {
+      "Sid": "AllowxyzLambdaReadOnlyErrorPrefixObjects",
+      "Effect": "Allow",
+      "Principal": { "AWS": "<LAMBDA_ROLE_ARN>" },
+      "Action": "s3:GetObject",
+      "Resource": "arn:aws:s3:::<BUCKET_NAME>/<ERROR_PREFIX>*"
+    }
+  ]
+}
+
+
+####### dev account:
+
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "ListOnlyErrorPrefix",
+      "Effect": "Allow",
+      "Action": "s3:ListBucket",
+      "Resource": "arn:aws:s3:::<BUCKET_NAME>",
+      "Condition": {
+        "StringLike": {
+          "s3:prefix": [
+            "<ERROR_PREFIX>*"
+          ]
+        }
+      }
+    },
+    {
+      "Sid": "ReadOnlyErrorPrefixObjects",
+      "Effect": "Allow",
+      "Action": [
+        "s3:GetObject"
+      ],
+      "Resource": "arn:aws:s3:::<BUCKET_NAME>/<ERROR_PREFIX>*"
+    }
+  ]
+}
+
+
