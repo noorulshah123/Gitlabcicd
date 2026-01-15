@@ -1,0 +1,147 @@
+Subject
+
+Concern: SageMaker Python SDK v3+ significantly increases custom image size and dependency footprint — impact to Studio launch performance and potential OOM for existing apps
+
+Service
+
+Amazon SageMaker (Studio / Studio Classic + Custom Images)
+(If you’re using Studio Classic, keep it as “Studio Classic”; otherwise use “Studio”)
+
+Case description
+
+Hello AWS Support Team,
+
+We are using Amazon SageMaker services and building custom Docker images on top of the SageMaker Distribution image. Our current base image includes SageMaker Python SDK v2.245.0.
+
+During evaluation of upgrading to SageMaker Python SDK v3.x (and above), we observed an abrupt increase in Docker image size, driven by a large increase in dependencies (possibly due to new features and/or expanded support). This raises concerns for:
+
+SageMaker Studio application launch time and stability in the future, and
+
+Memory utilization / OOM behavior for our existing Studio apps and workloads that import/use the SageMaker SDK.
+
+We’d like AWS guidance on whether this change is expected, what the expected impact is, and what best practices AWS recommends to avoid launch performance regressions or runtime issues.
+
+Environment details
+
+AWS Account ID: [ACCOUNT_ID]
+
+Region: [REGION]
+
+SageMaker Studio Domain: [DOMAIN_NAME / DOMAIN_ID]
+
+Network Setup: [VPC-only / Public internet / Private-only + endpoints / NAT, etc.]
+
+Image workflow:
+
+Base image: SageMaker Distribution image — [IMAGE_URI + TAG]
+
+Current SageMaker Python SDK version inside image: 2.245.0
+
+Custom image: [CUSTOM_IMAGE_URI + TAG] built on top of the base image
+
+What we observed
+1) Docker image size increase after moving to SDK v3+
+
+When installing sagemaker>=3.0.0, the resulting image size increases significantly:
+
+Image size (SDK v2.245.0): [X GB]
+
+Image size (SDK v3.x): [Y GB]
+
+Net increase: [Δ GB]
+
+We also noticed a clear increase in dependency count/weight:
+
+Notable new/expanded dependencies: [brief list if known]
+
+Evidence captured via: pip freeze, pipdeptree, and Docker layer history (available upon request)
+
+2) Potential impact areas we are worried about
+
+Because Studio needs to pull and start these images, the larger footprint may:
+
+Increase image pull time from ECR
+
+Increase Studio app startup time (JupyterServer / KernelGateway or equivalent)
+
+Increase disk consumption on underlying storage
+
+Increase memory usage during environment startup/imports, leading to OOMKilled or app launch failures for smaller instance types / existing app configurations
+
+3) OOM / instability concerns for existing apps
+
+We have also observed (or are concerned about) OOM errors for existing apps using the SageMaker SDK, especially during startup or when importing the SDK and dependencies:
+
+Instance type(s): [e.g., ml.t3.medium / ml.m5.large / etc.]
+
+App type(s): [JupyterServer / KernelGateway / etc.]
+
+Symptoms: [OOMKilled / kernel dies / app fails to start / slow startup]
+
+Logs (if available): [CloudWatch log group / excerpt summary]
+
+(If you already have an actual OOM incident, call it out explicitly as an active production impact and include the timeframe.)
+
+Key questions for AWS Support
+
+Is the dependency and image-size increase in SageMaker Python SDK v3+ expected/intentional?
+
+If yes, is there documentation/release guidance explaining the dependency expansion and expected footprint?
+
+Will this SDK change affect SageMaker Studio launches in the future?
+
+Specifically: does AWS anticipate materially slower Studio app startup times or higher failure rates due to larger image pulls / memory overhead?
+
+Are there known limits or best-practice thresholds for image size for Studio custom images?
+
+How does the SDK version used in our custom image interact with Studio-managed components?
+
+If AWS updates base images or Studio runtime components, could Studio implicitly move to SDK v3+ even if we don’t?
+
+Are there any roadmap considerations for when distribution images will move from v2.x to v3.x?
+
+OOM behavior: Are there known issues or guidance for memory usage changes with SDK v3+?
+
+Any recommended instance sizing, app memory guidelines, or mitigation steps for Studio apps?
+
+Recommended mitigation / best practices:
+
+What is AWS’s recommended approach to keep images lean while remaining compatible with Studio and SageMaker services?
+
+Are there supported “minimal” variants or techniques recommended by AWS (e.g., selecting a slimmer base, optional feature installs, dependency constraints) for production Studio environments?
+
+Reproduction steps (summary)
+
+Start from SageMaker Distribution image: [IMAGE_URI:TAG]
+
+Install current version: pip install sagemaker==2.245.0 → image size [X]
+
+Install v3+: pip install "sagemaker>=3.0.0" → image size [Y] and dependency expansion
+
+Launch Studio app using custom image → observe [startup time / failures / OOM]
+
+Attachments / evidence available (can be shared)
+
+Output of: pip freeze, pipdeptree, python -c "import sagemaker; print(sagemaker.__version__)"
+
+Dockerfile and docker history output
+
+Layer-wise size analysis / du -sh of site-packages
+
+Studio app logs / CloudWatch logs showing OOMKilled or startup failures
+
+Exact image URIs and tags used
+
+Request
+
+Please advise on:
+
+Whether the dependency/image growth in SDK v3+ is expected
+
+Whether this can affect Studio launch performance and stability
+
+Any known OOM risks and recommended mitigations
+
+Best practices (and/or AWS-supported base image guidance) for keeping custom Studio images compatible and lightweight
+
+Thank you.
