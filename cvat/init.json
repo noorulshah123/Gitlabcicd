@@ -1,0 +1,42 @@
+{
+  "family": "cvat-cmd-init",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "1024",
+  "memory": "2048",
+  "executionRoleArn": "arn:aws:iam::<ACCOUNT_ID>:role/ecsTaskExecutionRole",
+  "taskRoleArn": "arn:aws:iam::<ACCOUNT_ID>:role/cvatServerTaskRole",
+  "containerDefinitions": [
+    {
+      "name": "cvat-cmd",
+      "image": "<ACCOUNT_ID>.dkr.ecr.<REGION>.amazonaws.com/cvat/server:<TAG>",
+      "essential": true,
+      "command": [
+        "/bin/sh",
+        "-lc",
+        "/opt/venv/bin/python manage.py migrate && /opt/venv/bin/python manage.py createsuperuser --no-input"
+      ],
+      "environment": [
+        { "name": "ALLOWED_HOSTS", "value": "cvat.internal.example.com" },
+        { "name": "CVAT_POSTGRES_HOST", "value": "<RDS_ENDPOINT_DNS>" },
+        { "name": "CVAT_POSTGRES_USER", "value": "postgres" },
+        { "name": "CVAT_REDIS_HOST", "value": "<REDIS_ENDPOINT_DNS>" },
+
+        { "name": "DJANGO_SUPERUSER_USERNAME", "value": "admin" },
+        { "name": "DJANGO_SUPERUSER_EMAIL", "value": "admin@example.com" }
+      ],
+      "secrets": [
+        { "name": "CVAT_POSTGRES_PASSWORD", "valueFrom": "arn:aws:secretsmanager:<REGION>:<ACCOUNT_ID>:secret:cvat/rds" },
+        { "name": "DJANGO_SUPERUSER_PASSWORD", "valueFrom": "arn:aws:secretsmanager:<REGION>:<ACCOUNT_ID>:secret:cvat/admin" }
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/cvat/init",
+          "awslogs-region": "<REGION>",
+          "awslogs-stream-prefix": "cvat"
+        }
+      }
+    }
+  ]
+}
