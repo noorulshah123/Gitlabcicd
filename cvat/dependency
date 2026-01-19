@@ -1,0 +1,3 @@
+"dependsOn": [
+  { "containerName": "cvat_redis_ondisk", "condition": "START" }
+]
