@@ -1,0 +1,49 @@
+{
+  "family": "cvat-redis-ondisk",
+  "requiresCompatibilities": ["FARGATE"],
+  "networkMode": "awsvpc",
+
+  "cpu": "512",
+  "memory": "1024",
+
+  "ephemeralStorage": { "sizeInGiB": 40 },
+
+  "volumes": [
+    { "name": "kvrocks_data" }
+  ],
+
+  "containerDefinitions": [
+    {
+      "name": "cvat_redis_ondisk",
+      "image": "apache/kvrocks:2.12.1",
+      "essential": true,
+
+      "portMappings": [
+        { "containerPort": 6666, "protocol": "tcp" }
+      ],
+
+      "linuxParameters": {
+        "initProcessEnabled": true
+      },
+
+      "command": ["--compact-cron", "0 3 * * *"],
+
+      "mountPoints": [
+        {
+          "sourceVolume": "kvrocks_data",
+          "containerPath": "/var/lib/kvrocks",
+          "readOnly": false
+        }
+      ],
+
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/cvat/kvrocks",
+          "awslogs-region": "YOUR_REGION",
+          "awslogs-stream-prefix": "ecs"
+        }
+      }
+    }
+  ]
+}
