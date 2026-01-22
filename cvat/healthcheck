@@ -1,0 +1,12 @@
+"healthCheck": {
+  "command": ["CMD-SHELL", "python3 -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/api/server/health/').read()\""],
+  "interval": 30,
+  "timeout": 10,
+  "retries": 5,
+  "startPeriod": 180
+}
+
+
+"dependsOn": [
+  { "containerName": "cvat_server", "condition": "HEALTHY" }
+]
