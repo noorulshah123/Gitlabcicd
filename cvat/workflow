@@ -1,0 +1,741 @@
+1) CVAT architecture in plain terms
+
+Think of CVAT as 3 big layers:
+
+Frontend (UI)
+
+Backend API (server)
+
+Background processing (workers + utils)
+
+And 3 shared backing services:
+
+Postgres (RDS) = metadata + annotations + state
+
+Redis (in-mem + on-disk) = queues, locks, cache, coordination
+
+Shared file storage (EFS) = videos/images, extracted frames, exports, temp, logs (depending on config)
+
+2) What each container handles (deep + practical)
+A) cvat-ui
+
+Role: Static frontend website (React) served by nginx.
+Does:
+
+Serves HTML/JS/CSS
+
+Calls backend via /api/*
+
+Does NOT:
+
+talk to DB/Redis
+
+run background jobs
+
+process media
+
+Networking:
+
+Needs one inbound port (whatever nginx listens on; in compose it’s often 8000 behind Traefik)
+
+In ECS + ALB, you expose the container port that nginx uses.
+
+Healthcheck:
+
+Should be HTTP GET / (or /index.html) on its listening port.
+
+B) cvat_server (backend)
+
+This is the main backend and usually has nginx + uvicorn + Django inside.
+
+Does:
+
+Authentication (login/session/token)
+
+Authorization (who can access what)
+
+REST API endpoints /api/*
+
+Reads/writes:
+
+Postgres (metadata, annotations, job status)
+
+EFS (media files, chunks, exports)
+
+Pushes jobs into Redis queues for workers to process
+
+Often serves:
+
+Media chunk endpoints (frames/videos)
+
+Export download endpoints
+
+Depends on:
+
+RDS Postgres
+
+Redis in-mem
+
+Redis on-disk (if configured)
+
+EFS (very commonly)
+
+Networking:
+
+Needs inbound from ALB (API traffic)
+
+Needs outbound to:
+
+RDS 5432
+
+Redis 6379
+
+EFS 2049 (NFS)
+
+OPA 8181 if used
+
+possibly object storage endpoints, etc.
+
+Healthcheck:
+
+Prefer backend API check path like /api/server/about (depends on version) or a simple /api/health if present.
+
+If you run python manage.py health_check, it might also check OPA/redis etc, so if OPA is missing it can fail even if Django is up.
+
+C) cvat_utils
+
+This is often misunderstood. It’s not “just helpers”.
+
+Usually does:
+
+Periodic / scheduled background tasks
+
+Cleanup routines
+
+RQ scheduler / maintenance jobs
+
+Possibly “watchdog”-like tasks (depends on CVAT config)
+
+Depends on:
+
+Redis (queues)
+
+Postgres (sometimes)
+
+EFS (if it touches filesystem content)
+
+Networking:
+
+Typically no inbound ports
+
+Only outbound to Redis/RDS/EFS
+
+D) Workers (cvat_worker_import, cvat_worker_export, cvat_worker_annotation)
+
+These are queue workers. They are not web servers.
+
+How they work:
+
+They connect to Redis queue(s) (RQ/Celery style depending on CVAT setup)
+
+They wait for jobs
+
+When a job arrives:
+
+They fetch inputs from EFS (or referenced storage)
+
+Process it (decode, transform, export, compute)
+
+Save output to EFS
+
+Update job status in Postgres
+
+Possibly publish completion state via Redis
+
+Worker types:
+
+import worker: dataset import, unpacking, preprocessing, validating
+
+export worker: format conversion, zip generation, dataset packaging
+
+annotation worker: heavy annotation-related tasks, background processing, sometimes model-assisted steps depending on deployment
+
+Networking:
+
+No inbound ports needed
+
+Outbound only to Redis/RDS/EFS (and maybe to internal endpoints if job requires)
+
+Scaling:
+
+In ECS you can scale workers independently (more export workers if many exports, etc.)
+
+E) cvat_opa (OPA)
+
+OPA is a policy engine. CVAT can use it to decide access rules.
+
+Typical flow in CVAT:
+
+cvat_server calls OPA to check “is user X allowed to do Y?”
+
+Or OPA pulls policies/bundles from CVAT (/api/auth/rules) depending on configuration
+
+Your errors showed both patterns:
+
+CVAT failing to resolve opa
+
+OPA failing to resolve cvat-service for /api/auth/rules
+
+That means DNS/service discovery is wrong OR services are separated without correct naming.
+
+Networking:
+
+OPA typically listens on 8181
+
+Needs to reach CVAT backend if it downloads bundles from it.
+
+F) smokescreen
+
+Smokescreen is an egress proxy (outbound HTTP proxy) to control outbound destinations.
+It’s used to prevent SSRF / uncontrolled outbound access.
+
+In a private VPC + TGW setup:
+
+Even though you have “no internet”, CVAT can still reach:
+
+TGW-connected networks
+
+VPC endpoints
+
+internal corporate services
+So smokescreen can still be useful to ensure CVAT cannot call arbitrary internal IPs/hosts.
+
+But your issue:
+
+Smokescreen binds on localhost ports and can conflict when many containers share one task network namespace.
+
+Also you saw env expansion errors for ENV_SMOKESCREEN_OPTS and password variables.
+
+G) clamav
+
+ClamAV is antivirus scanning.
+
+Used when:
+
+You allow file uploads/imports and want scanning for malware
+
+If you don’t need it:
+
+You can disable/remove it (depends on CVAT’s supervisord config and environment toggles).
+
+3) Why EFS is important in ECS
+
+In docker-compose, services share volumes easily (./data:/data etc).
+In ECS, each task is ephemeral unless you attach a persistent/shared storage.
+
+EFS is how you make “docker volumes” in ECS.
+
+What typically goes on EFS in CVAT
+
+Uploaded media (videos/images)
+
+Extracted frames/chunks
+
+Temporary processing files
+
+Exports (zip files)
+
+Sometimes logs / cache directories (depends)
+
+Without shared storage:
+
+cvat_server might upload a video, but a worker in another task won’t see it
+
+Exports might be created somewhere the UI/backend can’t serve
+
+So EFS is the glue between server + workers.
+
+4) EFS Access Points (what they are + why they help)
+
+An EFS Access Point is like a “managed entry” into an EFS file system:
+
+It can force a root directory (like a chroot)
+
+It can enforce POSIX UID/GID and permissions
+
+It simplifies multi-tenant or multi-app sharing of one EFS
+
+Why Access Points matter for CVAT
+
+CVAT containers run as specific Linux users (not always root).
+If permissions are wrong, you get:
+
+“permission denied” when writing frames/exports
+
+workers failing silently or crashing
+
+nginx/uvicorn can start, but uploads fail
+
+Access points let you say:
+
+“Whenever this task mounts EFS, mount it as user 1000:1000”
+
+“and treat /cvat as the root”
+
+Example structure (recommended)
+
+One EFS file system:
+
+/cvat/ (root directory for CVAT)
+
+/cvat/data/ (uploads/media)
+
+/cvat/keys/ (if needed)
+
+/cvat/logs/
+
+/cvat/tmp/
+
+/cvat/exports/
+
+Then create an access point:
+
+Root directory: /cvat
+
+Owner UID/GID: match the CVAT container user (commonly 1000, but confirm)
+
+Permissions: 0775 or 0777 depending on strictness
+
+Now every container that mounts via that Access Point sees:
+
+/ inside mount = /cvat on EFS (clean, consistent)
+
+5) How to map EFS mounts to each container (important)
+Which containers need EFS?
+
+Usually:
+
+✅ cvat_server (reads/writes media, exports)
+
+✅ workers (must process same files)
+
+✅ utils (if it cleans/maintains data)
+Optional:
+
+UI generally does NOT need EFS (it serves static UI)
+
+ECS task definition detail
+
+EFS volume configured once in task definition
+
+Each container adds a mountPoint like:
+
+containerPath: /home/django/data or /data (depends on CVAT image expectations)
+
+sourceVolume: cvat-efs
+
+Make sure server + workers use the same containerPath, so they read/write same place.
+
+6) “What each service handles” (AWS service mapping)
+ALB
+
+Public (or TGW-internal) entry point
+
+TLS termination (ACM)
+
+Routes:
+
+/api/* to backend target group
+
+/* to UI target group
+
+ECS Services
+
+Best practice split:
+
+Backend service
+
+contains cvat_server
+
+may include opa as sidecar only if you want tight coupling
+
+Workers service(s)
+
+contains worker containers
+
+no ALB
+
+Utils service
+
+periodic/scheduler tasks
+
+RDS (Postgres)
+
+single truth DB
+
+Redis/Valkey
+
+inmem: fast cache/locks/sessions
+
+ondisk: durable queue/state (if you keep this pattern)
+
+EFS
+
+shared file system between all tasks
+
+7) User actions → backend internal chain (detailed)
+Upload video
+
+UI sends upload to /api/tasks/.../data
+
+Backend writes file to EFS under uploads path
+
+Backend enqueues “extract frames/chunk” job in Redis
+
+Worker pulls job, reads video from EFS, writes frames to EFS
+
+Backend updates DB state so UI can request frames
+
+UI requests frames; backend serves references/chunks from EFS
+
+Export
+
+UI triggers export API
+
+Backend creates export job entry in DB + queue in Redis
+
+Export worker reads annotations from Postgres and media from EFS
+
+Creates zip/export under EFS
+
+Backend marks job complete, UI downloads export
+
+8) Key answers to the ports confusion (workers etc.)
+
+Workers don’t need port mapping because nothing calls them directly.
+
+Only containers that ALB talks to need port mapping:
+
+cvat_server
+
+cvat-ui
+
+Inside a single ECS task:
+
+Containers share the same network namespace
+
+If two containers bind the same port (even 127.0.0.1), they can conflict
+That’s why smokescreen port bind collisions can happen.
+
+9) Practical recommendations for your “private VPC + TGW” case
+Smokescreen value / need
+
+If you don’t need outbound URL fetching/webhooks/etc: disable it
+
+If you do need it:
+
+run only one smokescreen instance per task
+
+and route outbound HTTP via that proxy explicitly
+
+EFS + Access Points
+
+Use a single access point for CVAT root
+
+Ensure POSIX UID/GID matches container runtime user
+
+Mount same path in server + workers
+
+If you share your EFS mount paths (what containerPath you used for server and workers) and whether you used an Access Point UID/GID, I can tell you exactly:
+
+what directory should be root,
+
+what permissions you need,
+
+and which containers must mount EFS vs can skip it.
+
+Please provide architecural diagram in detail and the additional containers and services here in this picture
+Thought for 7m 20s
+
+Got it. Your picture is the “CVAT on ECS Fargate in a private VPC” high-level view — but it’s missing several real CVAT runtime pieces (OPA, workers, utils, storage mounts, secrets, logging, optional proxy/AV, etc.). Below is a more complete architecture + how everything talks to everything.
+
+1) What your current picture already shows (and what it means)
+Networking layer
+
+VPC split across 2 AZs
+
+Public subnets
+
+ALB (your entry point)
+
+NAT Gateways (only if tasks need outbound internet; in a fully private TGW-only design, NAT may be unused or tightly restricted)
+
+Private subnets
+
+ECS Fargate tasks/services: CVAT UI + CVAT backend (+ “serverless” + “cmd” in your diagram)
+
+RDS PostgreSQL (database)
+
+ElastiCache Redis (queue/cache)
+
+Storage + registry (icons on sides)
+
+S3 (typically: dataset imports/exports, backups, artifacts, sometimes media staging)
+
+ECR (where your CVAT images live)
+
+EFS (that green storage icon on right is effectively your shared POSIX filesystem for CVAT)
+
+2) The “missing” CVAT containers/services that should be on the diagram
+
+From your logs and entrypoint config, your deployment actually includes (or expects):
+
+Core services/containers
+
+cvat_server
+Django API + internal nginx/uvicorn/supervisord. Talks to Postgres + Redis + EFS + (OPA).
+
+cvat_ui
+Static frontend served by nginx. Calls the backend API.
+
+cvat_utils
+Scheduler/periodic jobs (rqscheduler, maintenance tasks).
+
+cvat_worker_ (import/export/annotation/… )*
+Background workers (RQ workers) that consume queues from Redis and do heavy jobs.
+
+Policy & security services
+
+OPA (Open Policy Agent)
+CVAT calls OPA for auth/rules decisions; OPA also pulls “bundle/rules” from CVAT backend.
+Your errors show OPA trying to reach http://cvat-service:8080/api/auth/rules (DNS not resolving).
+
+.rego policy files
+Rego rules are what OPA evaluates (policy-as-code).
+
+Optional but present in your config
+
+smokescreen (proxy)
+A local HTTP proxy used to control/limit outbound calls (webhooks, some imports/exports, etc.).
+It binds on localhost (e.g., 127.0.0.1:4750) which is why you got “address already in use” when you ran multiple CVAT containers inside one ECS task (containers share the task network namespace in awsvpc).
+
+clamav (ClamAV)
+Antivirus scanning (commonly used for user-uploaded files/imports). Optional.
+
+3) A more complete architecture diagram (text diagram)
+Recommended “AWS ECS-native” layout (cleanest)
+
+ALB only fronts UI and/or Backend
+
+Workers + utils are NOT behind ALB
+
+OPA is internal-only
+
+Everything shares EFS
+
+Redis + Postgres are shared dependencies
+
+flowchart TB
+  User[(User via Corp Network)] -->|HTTPS 443| ALB[Internal ALB]
+
+  subgraph VPC[VPC (2 AZs)]
+    subgraph Pub[Public Subnets]
+      ALB
+      NAT[NAT GW (optional)]
+    end
+
+    subgraph Priv[Private Subnets]
+      subgraph ECS[ECS Cluster (Fargate)]
+        UI[cvat-ui service\nnginx static UI]
+        BE[cvat-server service\nnginx+uvicorn+Django]
+        OPA[opa service\nOPA :8181]
+        WIMP[cvat-worker-import service\nRQ worker]
+        WEXP[cvat-worker-export service\nRQ worker]
+        WANN[cvat-worker-annotation service\nRQ worker]
+        UT[cvat-utils service\nrqscheduler/maintenance]
+        CMD[cvat-cmd one-off task\nmigrate/init/admin]
+      end
+
+      RDS[(RDS Postgres :5432)]
+      RIN[(Redis In-Memory :6379)]
+      ROD[(Redis "On-disk"/persistent :6379 or 6666)]
+      EFS[(EFS + Access Points\nNFS :2049)]
+    end
+
+    S3[(S3 Bucket)]
+    ECR[(ECR)]
+    CW[(CloudWatch Logs)]
+    SM[(Secrets Manager)]
+  end
+
+  ALB --> UI
+  ALB --> BE
+
+  UI -->|API calls| BE
+
+  BE --> RDS
+  BE --> RIN
+  BE --> ROD
+  BE --> EFS
+  BE -->|policy check| OPA
+  OPA -->|bundle fetch| BE
+
+  WIMP --> RIN
+  WEXP --> RIN
+  WANN --> RIN
+  UT --> RIN
+
+  WIMP --> RDS
+  WEXP --> RDS
+  WANN --> RDS
+  UT --> RDS
+
+  WIMP --> EFS
+  WEXP --> EFS
+  WANN --> EFS
+  UT --> EFS
+
+  BE --> S3
+  WIMP --> S3
+  WEXP --> S3
+
+  ECS --> CW
+  ECS --> SM
+  ECS --> ECR
+
+4) How communication works (end-to-end workflow)
+A) User opens CVAT
+
+User hits ALB (internal) over HTTPS.
+
+ALB routes to:
+
+cvat-ui (frontend) or
+
+sometimes directly to cvat-server depending on your routing design.
+
+UI calls backend APIs (login, list projects, load tasks, etc.).
+
+B) User creates a task + uploads data
+
+UI sends upload requests to cvat-server.
+
+Backend writes metadata to Postgres.
+
+Backend stores media either:
+
+directly on EFS (shared filesystem), and/or
+
+stages/archives in S3 (depends on your config + scale pattern).
+
+Backend enqueues background jobs in Redis (import preprocessing, chunking, etc.).
+
+C) Workers process jobs
+
+cvat_worker_import/export/annotation pull jobs from Redis queues.
+
+Workers read/write shared files from EFS (this is critical).
+
+Workers update job state in Postgres.
+
+Results become visible to the user through backend APIs.
+
+D) Authorization decisions (OPA)
+
+Backend calls OPA to evaluate access/rules.
+
+OPA periodically fetches rules (“bundle”) from the backend endpoint like:
+http://<backend-service>:<port>/api/auth/rules
+
+If service discovery/DNS is wrong, you see exactly what you saw:
+“lookup cvat-service … no such host”
+
+5) Where EFS + Access Points fit (and why they matter)
+
+Why EFS is needed:
+CVAT backend and workers must see the same paths (same files) for imports/exports/annotation artifacts. Without shared storage, the backend may “think” a file exists but workers can’t read it.
+
+Access Points are best practice because they:
+
+enforce a root directory and POSIX UID/GID per consumer
+
+prevent one component from mounting arbitrary paths
+
+simplify permissions (no manual chmod battles)
+
+Typical pattern:
+
+AccessPoint ap-cvat-data → /cvat/data (media, task data)
+
+AccessPoint ap-cvat-share → /cvat/share (exports/imports/temp)
+
+Mount both in server + all workers + utils (same mount points)
+
+Security group ports you must allow:
+
+ECS tasks → EFS mount targets: TCP 2049
+
+ECS tasks → RDS: TCP 5432
+
+ECS tasks → Redis: TCP 6379 (and 6666 only if you truly run a second Redis port)
+
+6) Important ECS-specific gotcha that your logs already proved
+“Why does smokescreen break when I run many CVAT containers in ONE ECS task?”
+
+Because with awsvpc networking, all containers in the same task share the same IP/port space.
+
+So if multiple containers try to bind:
+
+127.0.0.1:4750 (smokescreen default)
+you get:
+
+bind: address already in use
+
+smokescreen enters FATAL state → task exits (because container is essential)
+
+That’s why CVAT is usually split into multiple tasks/services on ECS, not many containers in one task, unless you reconfigure each to use different local ports.
+
+7) “Additional containers/services in your picture” (what to add)
+
+On top of what you drew, add boxes for:
+
+Inside ECS (private subnets):
+
+cvat_server
+
+cvat_ui
+
+cvat_utils
+
+cvat_worker_import
+
+cvat_worker_export
+
+cvat_worker_annotation (+ others you enable)
+
+opa
+
+optional: smokescreen
+
+optional: clamav
+
+optional “serverless/auto-annotation” runtime (depends on your design)
+
+AWS services not shown but required in real deployments:
+
+Secrets Manager (DB/Redis creds, Django secret key, etc.)
+
+CloudWatch Logs (you’re already reading these)
+
+ACM (cert for ALB)
+
+Route53 (internal DNS record)
+
+VPC Endpoints (S3, ECR API/DKR, Logs, Secrets Manager) if you truly want no NAT
+
+If you want, paste your ECS task definition JSON for:
+
+cvat-server
+
+cvat-ui
+…and I’ll map exactly which containerPort the ALB target group should use (your UI image is nginx-unprivileged, so it usually listens on 8080, not 80), and what health check path makes sense for CVAT UI vs backend.
