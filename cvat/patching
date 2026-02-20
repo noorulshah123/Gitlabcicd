@@ -1,0 +1,7 @@
+
+
+While the explicit package list contains around 100 packages, the total number of packages installed in the image — when accounting for transitive dependencies — exceeds 650. Reducing this footprint meaningfully would have a noticeable effect on image size and launch times.
+
+Additionally, this cleanup is being carried out in conjunction with an image patching exercise targeting known security vulnerabilities. So beyond performance improvements, this work also has a security compliance dimension that adds broader value to the business.
+
+We believe this makes the effort worthwhile, and we hope this context helps in prioritizing. We are grateful for your offer to share the dependencies, scripts, notebooks, and packages your team maintains, and we look forward to reviewing them collaboratively.
