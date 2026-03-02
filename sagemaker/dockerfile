@@ -1,0 +1,59 @@
+RUN apt-get update && \
+    apt-get remove -y libnode-dev libnode72 2>/dev/null || true && \
+    apt-get autoremove -y && \
+    rm -rf /var/lib/apt/lists/*
+
+##### older
+
+RUN npm update minimatch -g 2>/dev/null || true && \
+    # Find and update minimatch in all node_modules
+    find / -name "package.json" -path "*/minimatch/package.json" \
+        -exec dirname {} \; 2>/dev/null | while read dir; do \
+        cd "$dir/.." && npm install minimatch@latest 2>/dev/null || true; \
+    done
+
+# Fix node-forge (high - needs >= 1.3.2)
+RUN npm install -g node-forge@latest 2>/dev/null || true
+################
+
+RUN find /opt/conda -path "*/node_modules/basic-ftp" -type d 2>/dev/null | \
+    while read dir; do \
+        cd "$dir/.." && npm install basic-ftp@5.0.6 --save 2>/dev/null || true; \
+    done && \
+    find /usr/lib/code-server -path "*/node_modules/basic-ftp" -type d 2>/dev/null | \
+    while read dir; do \
+        cd "$dir/.." && npm install basic-ftp@5.0.6 --save 2>/dev/null || true; \
+    done && \
+    npm cache clean --force 2>/dev/null || true
+
+#########
+
+USER $MAMBA_USER
+RUN micromamba update -y -n base nodejs --channel conda-forge 2>/dev/null || true && \
+    micromamba update -y -n sagemaker-recovery-mode nodejs --channel conda-forge 2>/dev/null || true && \
+    micromamba clean --all --yes 2>/dev/null || true
+USER root
+
+######
+
+# FIX 4: code-server bundled node_modules
+RUN find /usr/lib/code-server -path "*/node_modules" -type d -maxdepth 3 2>/dev/null | head -3 | \
+    while read nm; do \
+        cd "$nm/.." && \
+        npm install minimatch@10 tar@7 node-forge@1.3.2 2>/dev/null || true; \
+    done && \
+    npm cache clean --force 2>/dev/null || true
+
+
+###########
+ ## Update it using the same tool that installed it — micromamba:
+USER $MAMBA_USER
+RUN micromamba update -y -n base nodejs --channel conda-forge
+
+####DOWNLOAD_STATIC_LIBV8=1
+
+######
+# Option A: Safe — update within the same major version
+USER $MAMBA_USER
+RUN micromamba update -y -n base nodejs --channel conda-forge --no-update-deps
+  
