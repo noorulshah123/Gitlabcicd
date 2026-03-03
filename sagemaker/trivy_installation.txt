@@ -1,0 +1,4 @@
+- curl -L -o /tmp/trivy.tar.gz https://github.com/aquasecurity/trivy/releases/download/v0.51.4/trivy_0.51.4_Linux-64bit.tar.gz
+- tar -xzf /tmp/trivy.tar.gz -C /usr/local/bin trivy
+- chmod +x /usr/local/bin/trivy
+- trivy --version
