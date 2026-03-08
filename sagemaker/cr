@@ -1,0 +1,21 @@
+CR Title:
+Image Patching – Custom SageMaker Image: Base Image Upgrade to v3.8.0-cpu, Code-Server Update & Vulnerability Remediation
+
+Description / Summary of Change:
+This change involves patching the custom SageMaker image used across multiple SageMaker domains by various teams. The image supports multiple kernels (Python, R) across JupyterLab, Code Editor, and RStudio environments. The scope of this change includes upgrading the base image to v3.8.0-cpu, updating the code-server version, and remediating critical and high-severity vulnerabilities identified during the latest scan. A substantial number of vulnerabilities have been reduced as a result of these updates. No functional changes to kernels or user workflows are expected — this is a security and maintenance patch only.
+Reason for Change:
+Security compliance — the current image carries critical and high vulnerabilities that need remediation per organizational patching policy. The base image and code-server versions are also being updated to their latest stable releases to reduce technical debt and maintain supportability.
+
+Risk Assessment:
+Risk Level: Medium
+Justification: The image is shared across multiple SageMaker domains and used by multiple teams, so the blast radius of a failed change is broad. However, the change is limited to base image and dependency upgrades with no application-level logic changes. Key risk factors include potential kernel incompatibilities after base image upgrade, possible library version conflicts across Python/R environments, and impact to active user sessions during image rollout.
+Mitigations: Pre-deployment testing has been performed across all supported kernels and IDEs. The image has been validated in a non-production or sandbox domain before production rollout. Rollback to the previous image version is straightforward (see backup plan).
+
+Backup / Rollback Plan:
+If issues are detected post-deployment, the rollback steps are as follows. First, revert the SageMaker image version in the domain/app configuration to the previous known-good image tag/version. Second, restart any affected user apps (JupyterLab, Code Editor, RStudio) to pick up the reverted image. Third, notify impacted teams of the rollback and timeline for re-attempt. The previous image version will be retained in the container registry and will not be deleted until the new image is confirmed stable. Estimated rollback time is around 15–30 minutes per domain.
+
+Impact Analysis:
+All teams using the custom SageMaker image across domains will be affected. Users may need to restart their apps/kernels to pick up the new image. No data loss is expected — user files in EFS/home directories are unaffected. Running notebooks or jobs will not be interrupted, but new sessions will launch with the updated image.
+
+Testing / Validation:
+The patched image has been built and scanned, confirming reduction in critical and high vulnerabilities. Functional testing has been completed for all kernels (Python, R) across JupyterLab, Code Editor, and RStudio. Package import checks and basic notebook execution have been validated. The code-server version upgrade has been tested for compatibility.
