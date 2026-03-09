@@ -5,3 +5,5 @@
 =TEXTBEFORE(TRIM(A1)," ",-1)
 
 =TEXTAFTER(TRIM(A1)," ",-1)
+
+=IFERROR(INDEX(A:A, SMALL(IF(A$1:A$500<>"", ROW(A$1:A$500)), ROW(1:1))), "")
