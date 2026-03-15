@@ -97,3 +97,20 @@ dynamic "statement" {
     resources = formatlist("arn:aws:bedrock:*::foundation-model/%s", var.allowed_foundation_model_ids)
   }
 }
+
+
+
+dynamic "statement" {
+    for_each = var.allow_invoke_tool ? [1] : []
+
+    content {
+      sid = "InvokeTool"
+      actions = [
+        "bedrock:InvokeTool"
+      ]
+      resources = [
+        "arn:aws:bedrock::${data.aws_caller_identity.current.account_id}:system-tool/*"
+      ]
+    }
+  }
+
