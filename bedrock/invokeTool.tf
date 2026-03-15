@@ -82,3 +82,18 @@ python enable_foundation_models.py --retries 5 --retry-delay 60 nova2-lite
 
 # Different region/profile
 python enable_foundation_models.py --region us-west-2 --profile ops-account nova2-lite
+
+
+dynamic "statement" {
+  for_each = length(var.allowed_foundation_model_ids) > 0 ? [1] : []
+
+  content {
+    sid = "FoundationModels"
+    actions = [
+      "bedrock:InvokeModel",
+      "bedrock:InvokeModelWithResponseStream",
+      "bedrock:GetFoundationModel"
+    ]
+    resources = formatlist("arn:aws:bedrock:*::foundation-model/%s", var.allowed_foundation_model_ids)
+  }
+}
