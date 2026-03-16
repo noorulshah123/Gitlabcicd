@@ -1,0 +1,32 @@
+Short Description
+Enable Amazon Nova 2 and Anthropic Claude 4.6 model access on AWS Bedrock across all accounts (Dev/Staging/Prod). No Terraform or infrastructure changes required.
+
+Description
+This CR requests enablement of Amazon Nova 2 (Nova 2 Lite, Nova 2, Nova 2 Pro) and Anthropic Claude 4.6 (Opus 4.6, Sonnet 4.6) foundation models on AWS Bedrock. Both model families have been reviewed and approved in the GenAI Model Catalogue. Enablement is a configuration-only activity performed via the Bedrock console or a Python script — no Terraform, networking, security group, or IAM policy changes are involved.
+The Namespace Role lacks the required AWS Marketplace permissions (aws-marketplace:Subscribe, aws-marketplace:ViewSubscriptions) and will produce an AccessDeniedException if used for enablement. Therefore, all enablement must be carried out using the AI Operations Role, which holds both Bedrock and Marketplace permissions. Once models are enabled and the marketplace subscription is active, the Namespace Role can invoke models normally via bedrock:InvokeModel.
+For Anthropic Claude 4.6 models, use-case details (company name, website, industry, intended use case, target audience) must be submitted during the enablement process as part of Anthropic's EULA acceptance on Bedrock.
+
+Justification
+
+Both model families (Nova 2 and Claude 4.6) are approved in the organisation's GenAI Model Catalogue and have cleared all governance and security reviews.
+Nova 2 models offer improved multimodal reasoning, lower latency, and reduced cost-per-token over Nova 1, directly benefiting existing inference workloads.
+Claude 4.6 models (Opus 4.6 and Sonnet 4.6) provide state-of-the-art performance for complex analysis, code generation, and agentic workflows required by current and planned GenAI use cases.
+This is a low-risk, configuration-only change — no infrastructure, Terraform, IAM, or networking modifications are required. The only action is toggling model access in Bedrock and accepting the marketplace subscription.
+
+
+Implementation Plan
+Step 1: Authenticate into the target AWS account using the AI Operations Role (which holds bedrock and aws-marketplace permissions).
+Step 2: Navigate to Amazon Bedrock → Model access → Manage model access in the AWS Console (or execute the Python enablement script).
+Step 3: Select and request access for the following models: Amazon Nova 2 Lite, Amazon Nova 2, Amazon Nova 2 Pro, Anthropic Claude Opus 4.6 (claude-opus-4-6), Anthropic Claude Sonnet 4.6 (claude-sonnet-4-6).
+Step 4: For Claude 4.6 models, complete the Anthropic use-case form with company name, website, industry, intended use case, and target audience.
+
+  Step 6: Repeat Steps 1–5 for each AWS account (Dev, Staging, Production).
+Step 7: Proceed to the Test Plan for validation.
+Note — Alternatively, Steps 1–6 can be automated using a Python script that assumes the AI Operations Role via STS across all target accounts and calls put_foundation_model_entitlement for each model ID.
+
+
+    This CR requests enablement of Amazon Nova 2 (Nova 2 Lite, Nova 2, Nova 2 Pro) and Anthropic Claude 4.6 (Opus 4.6, Sonnet 4.6) foundation models on AWS Bedrock across all accounts in our environment.
+Our AWS landscape consists of both multi-tenant accounts — where multiple teams operate under separate Bedrock namespaces within a shared account — and single-tenant accounts dedicated to individual teams or workloads. Model enablement is an account-level operation, meaning enabling a model once in a multi-tenant account makes it available to all namespaces (and therefore all teams) within that account. For single-tenant accounts, enablement applies to the sole team operating in that account. Regardless of account type, enablement must be performed per account.
+Both model families have been reviewed and approved in the GenAI Model Catalogue. This is a configuration-only activity performed via the Bedrock console or a Python script — no Terraform, networking, security group, or IAM policy changes are involved.
+The Namespace Roles assigned to individual teams lack the required AWS Marketplace permissions (aws-marketplace:Subscribe, aws-marketplace:ViewSubscriptions) and will produce an AccessDeniedException if used for enablement. Therefore, all enablement must be carried out using the AI Operations Role, which holds both Bedrock and Marketplace permissions. Once models are enabled and the marketplace subscription is active at the account level, all Namespace Roles across all teams — whether in a multi-tenant or single-tenant account — can invoke the models normally via bedrock:InvokeModel without any additional configuration.
+For Anthropic Claude 4.6 models, use-case details (company name, website, industry, intended use case, target audience) must be submitted during the enablement process as part of Anthropic's EULA acceptance on Bedrock.
