@@ -1,0 +1,8 @@
+form_data = {
+    "companyName": "Your Company Name Here",
+    "companyWebsite": "https://www.yourcompany.com",
+    "industryOption": "Technology",
+    "otherIndustryOption": "",
+    "intendedUsers": "Internal employees",
+    "useCases": "Internal AI-powered applications for data analysis, code generation, and document processing. Used by internal development and data engineering teams."
+}
