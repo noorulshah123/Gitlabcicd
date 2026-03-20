@@ -1,0 +1,2 @@
+This deployment introduces Amazon's latest Nova 2 class models with advanced reasoning capabilities and Anthropic's most capable Claude 4.6 class models (Sonnet and Opus) to the organisation's approved Bedrock catalogue.
+The bedrock:InvokeTool permission for Nova's built-in system tools (Web Grounding, Code Interpreter) is restricted by default and will require a separate risk assessment and namespace-level approval.
