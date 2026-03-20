@@ -1,0 +1,110 @@
+Hi All,
+
+We are pleased to inform you that the following Amazon Bedrock foundation models have been reviewed, approved through the GenAI Model Catalogue, and are scheduled for enablement across the organisation.
+
+Approved Models
+
+1. Amazon Nova 2 Class
+   • Nova 2 Lite (amazon.nova-2-lite-v1:0)
+   • Nova 2 Sonic (amazon.nova-2-sonic-v1:0)
+
+2. Anthropic Claude 4.6 Class
+   • Claude Sonnet 4.6 (anthropic.claude-sonnet-4-6)
+   • Claude Opus 4.6 (anthropic.claude-opus-4-6-v1)
+
+Enablement Schedule
+
+• Non-Production Accounts: <NPE Date>
+• Production Accounts: <Prod Date>
+
+What This Means for You
+
+Once enabled, the above models will be available for use via the Bedrock Console Playground, AWS SDK, and Bedrock API within the namespaces provisioned for your team. No action is required from your end — the enablement will be carried out by the platform team as part of the above change request.
+
+Key Points
+
+• IAM policies governing model access through your existing namespace consumer and developer roles remain unchanged. If your namespace already permits the relevant model family patterns (e.g., anthropic.claude-*, amazon.nova-*), the new models will be accessible automatically.
+
+• For Anthropic Claude models, a one-time use case form submission is required per AWS account before first invocation. This has been completed as part of the enablement process.
+
+• The bedrock:InvokeTool permission (required for Nova's built-in system tools such as Web Grounding and Code Interpreter) is not enabled by default. Teams requiring these capabilities should raise a request with a completed risk assessment, and it will be enabled at the namespace level.
+
+Please reach out to the platform team if you have any questions or require access for additional namespaces.
+
+Regards,
+[Your Name]
+Cloud Infrastructure & Data Engineering
+
+
+
+############################
+
+#2
+
+Hi Team,
+
+Following approval through the GenAI Model Catalogue, the below Bedrock foundation models are scheduled for enablement.
+
+Models:
+• Amazon Nova 2 Lite (amazon.nova-2-lite-v1:0)
+• Amazon Nova 2 Sonic (amazon.nova-2-sonic-v1:0)
+• Anthropic Claude Sonnet 4.6 (anthropic.claude-sonnet-4-6)
+• Anthropic Claude Opus 4.6 (anthropic.claude-opus-4-6-v1)
+
+Schedule:
+• NPE Accounts: <NPE Date>
+• Production Accounts: <Prod Date>
+
+No action is required from consumers. The models will be available through the Bedrock Playground and API once enablement is complete. Existing namespace IAM policies with wildcard patterns (anthropic.claude-*, amazon.nova-*) will automatically cover the new models.
+
+Note: Nova's built-in system tools (Web Grounding, Code Interpreter) require a separate bedrock:InvokeTool approval. This is not granted by default. Please raise a request if your team requires this capability.
+
+Feel free to reach out if you have any questions.
+
+Regards,
+[Your Name]
+
+
+##############
+# 3
+
+Dear Bedrock Consumers,
+
+As part of our ongoing effort to expand the approved foundation model catalogue for the organisation, we are pleased to confirm that the following models have been assessed, approved, and are scheduled for enablement across Bedrock-provisioned accounts.
+
+— Approved Models —
+
+Amazon Nova 2 Class:
+• Nova 2 Lite (amazon.nova-2-lite-v1:0) — Lightweight model with reasoning capabilities
+• Nova 2 Sonic (amazon.nova-2-sonic-v1:0) — Audio/multimodal capabilities
+
+Anthropic Claude 4.6 Class:
+• Claude Sonnet 4.6 (anthropic.claude-sonnet-4-6) — Balanced performance for everyday workloads
+• Claude Opus 4.6 (anthropic.claude-opus-4-6-v1) — Most capable model for complex reasoning and agentic tasks
+
+— Enablement Schedule —
+
+• Non-Production (NPE) Accounts: <NPE Date>
+• Production Accounts: <Prod Date>
+
+— Governance & Access Details —
+
+1. IAM Access: Namespace roles using wildcard patterns (anthropic.claude-*, amazon.nova-*) in allowed_foundation_model_ids will automatically have access to the new models. No Terraform or IAM policy changes required for existing namespaces.
+
+2. Anthropic Use Case Form: A one-time use case submission to Anthropic is required per AWS account. This has been handled as part of the enablement activity.
+
+3. AWS Marketplace Subscription: Third-party models (Anthropic) require a marketplace subscription which is created automatically on first invocation. The necessary aws-marketplace:Subscribe and aws-marketplace:ViewSubscriptions permissions are included in the namespace roles.
+
+4. bedrock:InvokeTool (Nova System Tools): The Nova 2 models support built-in system tools — Web Grounding (live internet search) and Code Interpreter (Python code execution). The bedrock:InvokeTool permission is NOT granted by default as these capabilities cross a security boundary. Teams requiring this functionality must complete a risk assessment and request enablement at the namespace level.
+
+— Action Required —
+
+No action is required for standard model invocation. If your team needs access to Nova system tools (InvokeTool), please raise a request referencing this change.
+
+For any questions or additional namespace access requirements, please reach out to the platform team.
+
+Regards,
+[Your Name]
+Cloud Infrastructure & Data Engineering
+
+
