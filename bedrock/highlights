@@ -3,3 +3,6 @@ The bedrock:InvokeTool permission for Nova's built-in system tools (Web Groundin
 
 
 Major Highlight: Enablement of Amazon Nova 2 class (Lite, Sonic) and Anthropic Claude 4.6 class (Sonnet 4.6, Opus 4.6) foundation models across all Bedrock-provisioned accounts, bringing the latest generation of reasoning, multimodal, and agentic AI capabilities to the organisation's approved model catalogue.
+
+
+Contributed to ShinyProxy platform improvements spanning logging architecture design with CloudWatch integration, UI branding, Docker image patching, and security and maintenance enhancements to ensure a stable and well-monitored deployment.
