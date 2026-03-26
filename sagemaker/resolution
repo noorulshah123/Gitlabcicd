@@ -1,0 +1,24 @@
+# Check 1: Are credentials actually retrieved?
+creds_sql = project.get_connection('SQL_Server_Connect', shared=True)
+print("Keys:", creds_sql.keys())
+print("Username:", creds_sql.get('username', 'MISSING'))
+print("Password present:", bool(creds_sql.get('password')))
+
+# Check 2: FreeTDS / OpenSSL versions
+import pymssql
+print("pymssql version:", pymssql.__version__)
+print("FreeTDS version:", pymssql.get_dbversion())
+
+import ssl
+print("OpenSSL version:", ssl.OPENSSL_VERSION)
+
+# Check 3: Try connecting with explicit TLS settings
+conn = pymssql.connect(
+    server="",
+    user=creds_sql['username'],
+    password=creds_sql['password'],
+    database="your_db",
+    port=1433,
+    tds_version="7.3",       # try forcing older TDS version
+    login_timeout=30          # give it more time
+)
